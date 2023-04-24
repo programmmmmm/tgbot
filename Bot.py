@@ -219,12 +219,10 @@ def check_subscription(update: Update, context: CallbackContext):
         return False
 
 
-def get_user_data(user_id, chat_data):
-    if user_id not in chat_data:
-        chat_data[user_id] = {
-            'gp': 1
-        }
-    return chat_data[user_id]
+def get_user_data(user_id, user_data):
+    if user_id not in user_data:
+        user_data[user_id] = {'gp': 100}
+    return user_data[user_id]
 
 def update_user_data(user_id, chat_data, updated_data):
     chat_data[user_id].update(updated_data)
@@ -232,9 +230,8 @@ def update_user_data(user_id, chat_data, updated_data):
 
 def my_data(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    user_data = get_user_data(user_id, context.chat_data)
+    user_data = get_user_data(user_id, context.user_data)
     update.message.reply_text(f"Ваш тарифный план: {user_data['gp']}GP")
-
 
 
 def handle_menu(update: Update, context: CallbackContext):
@@ -294,12 +291,11 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
 
 def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    user_data = get_user_data(user_id, context.chat_data)
+    user_data = get_user_data(user_id, context.user_data)
 
     if context.user_data.get("ready_to_ask"):
         if user_data['gp'] > 0:
             context.user_data["ready_to_ask"] = True
-            
             if context.user_data.get("ready_to_ask"):
                 user_message = update.message.text
 
@@ -406,8 +402,8 @@ def ask_question(update: Update, context: CallbackContext):
                 context.bot.send_message(chat_id=update.effective_chat.id, text=response)
                 context.user_data["ready_to_ask"] = False
             else:
-                update.message.reply_text(
-                    "Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
+                update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
+            context.user_data[user_id]['gp'] -= 1
         else:
             update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
 
