@@ -222,7 +222,7 @@ def check_subscription(update: Update, context: CallbackContext):
 def get_user_data(user_id, chat_data):
     if user_id not in chat_data:
         chat_data[user_id] = {
-            'gp': 15
+            'gp': 1
         }
     return chat_data[user_id]
 
@@ -273,7 +273,8 @@ def handle_menu(update: Update, context: CallbackContext):
     elif user_message == "Мои данные":
         my_data(update, context)
     else:
-        context.user_data["ready_to_ask"] = False
+        if "ready_to_ask" in context.user_data:
+            context.user_data["ready_to_ask"] = False
 
 
 def handle_inline_keyboard_button_click(update: Update, context: CallbackContext):
@@ -295,10 +296,10 @@ def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     user_data = get_user_data(user_id, context.chat_data)
 
-    if context.chat_data.get("ready_to_ask"):
+    if context.user_data.get("ready_to_ask"):
         if user_data['gp'] > 0:
-            context.chat_data["ready_to_ask"] = False
-
+            context.user_data["ready_to_ask"] = True
+            
             if context.user_data.get("ready_to_ask"):
                 user_message = update.message.text
 
@@ -448,9 +449,11 @@ def main():
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.regex('^Задать вопрос 🔍$'), handle_menu))
-    dp.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
     dp.add_handler(MessageHandler(Filters.regex('^Возможности$'), handle_menu))
     dp.add_handler(MessageHandler(Filters.regex('^Premium-подписка$'), handle_menu))
+    dp.add_handler(MessageHandler(Filters.regex('^Мои данные$'), handle_menu))
+
+    dp.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
     dp.add_handler(MessageHandler(Filters.text, ask_question))
     dp.add_handler(CallbackQueryHandler(handle_inline_keyboard_button_click))
     dp.add_error_handler(error)
