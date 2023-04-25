@@ -180,6 +180,14 @@ def send_message_and_get_response_to_user_question(message):
             logging.warning(f"Unexpected error: {e}")
             break
 
+    # Вставка нового кода
+    try:
+        driver.find_element(By.CSS_SELECTOR, ".Message_humanOptimisticFooter__zm1hu[data-visible='true']")
+        message_sent = False
+    except NoSuchElementException:
+        message_sent = True
+    # Конец вставки нового кода
+
     last_response = None
     no_new_messages_counter = 0
     while True:
@@ -222,7 +230,8 @@ def send_message_and_get_response_to_user_question(message):
             logging.warning(f"Unexpected error: {e}")
             break
 
-    return last_response, not (no_new_messages_counter >= 5), not driver.find_elements(By.CSS_SELECTOR, ".Message_humanOptimisticFooter__zm1hu[data-visible='true']")
+    return last_response, not (no_new_messages_counter >= 5), message_sent
+
 
 
 
@@ -478,22 +487,16 @@ def ask_question(update: Update, context: CallbackContext):
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
 
-                if message_sent:
-                    if received_response:
-                        if response != "..." and not is_chatgpt_not_respond_error(driver):
-                            context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                            context.user_data["ready_to_ask"] = False
-                            context.user_data[user_id]['gp'] -= 1
-                        else:
-                            update.message.reply_text(
-                                "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+                if received_response:
+                    if response != "..." and not is_chatgpt_not_respond_error(driver):
+                        context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                        context.user_data["ready_to_ask"] = False
                     else:
                         update.message.reply_text(
                             "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
                 else:
                     update.message.reply_text(
                         "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
-
 
             else:
                 update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
