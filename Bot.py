@@ -16,8 +16,6 @@ import re
 
 import os
 
-import pymysql
-
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
@@ -44,7 +42,7 @@ payment_links = {
 }
 
 
-TELEGRAM_BOT_TOKEN = ":-"
+TELEGRAM_BOT_TOKEN = "6248465953:wI5TEA8Nr9Ao"
 url = "https://poe.com/ChatGPT"
 
 options = webdriver.ChromeOptions()
@@ -200,19 +198,7 @@ db_password = "2!TeY7X5aremMiH"
 db_name = "fromTaylor$default"
 
 
-# В вашей функции start или другой функции, которая вызывается при первом обращении пользователя к боту:
 def start(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-
-    # Создаем подключение к базе данных
-    conn = pymysql.connect(host=db_host, user=db_user, password=db_password, database=db_name)
-
-    # Добавляем нового пользователя в базу данных, если его там еще нет
-    add_new_user_if_not_exists(user_id, conn)
-
-    # Закрываем подключение к базе данных
-    conn.close()
-
     keyboard = [
         ["Задать вопрос 🔍", "Возможности"],
         ["Premium-подписка"], ["Мои данные"]
@@ -220,6 +206,8 @@ def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
                               reply_markup=reply_markup)
+
+
 
 
 
