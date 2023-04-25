@@ -366,7 +366,10 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
         query.answer("Неизвестное действие.")
 
 
-def is_chatgpt_not_respond_error(driver):
+def is_chatgpt_not_respond_error(driver, response):
+    if response == "...":
+        return True
+
     try:
         error_element = driver.find_element(By.CSS_SELECTOR, ".Message_botOptimisticFooter__aQiG9[data-visible='true']")
         if error_element and error_element.text == "ChatGPT did not respond.":
@@ -374,6 +377,7 @@ def is_chatgpt_not_respond_error(driver):
     except NoSuchElementException:
         pass
     return False
+
 
 
 
@@ -487,23 +491,17 @@ def ask_question(update: Update, context: CallbackContext):
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
 
-                if received_response:
-                    if response != "..." and not is_chatgpt_not_respond_error(driver):
-                        context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                        context.user_data["ready_to_ask"] = False
-                    else:
-                        update.message.reply_text(
-                            "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+                if received_response and not is_chatgpt_not_respond_error(driver, response):
+                    context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                    context.user_data["ready_to_ask"] = False
                 else:
                     update.message.reply_text(
                         "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
 
             else:
                 update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
-            if message_sent:
-                if received_response:
-                    if response != "..." and not is_chatgpt_not_respond_error(driver):
-                        context.user_data[user_id]['gp'] -= 1
+            if received_response and not is_chatgpt_not_respond_error(driver, response):
+                context.user_data[user_id]['gp'] -= 1
 
 
         else:
