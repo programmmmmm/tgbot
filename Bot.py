@@ -14,7 +14,9 @@ import random
 
 import re
 
-import os
+import traceback
+
+import sys
 
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -31,6 +33,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchWindowException, WebDriverException
+
 
 payment_links = {
     "25_requests": "https://poe.com/Sage25",
@@ -42,7 +46,7 @@ payment_links = {
 }
 
 
-TELEGRAM_BOT_TOKEN = "6248465953:wI5TEA8Nr9Ao"
+TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao"
 url = "https://poe.com/ChatGPT"
 
 options = webdriver.ChromeOptions()
@@ -51,6 +55,7 @@ options.add_argument("--disable-gpu")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 driver = webdriver.Chrome(options=options)
+
 
 with open("cookies.json", "r") as f:
     cookies = json.load(f)
@@ -89,6 +94,28 @@ except NoSuchElementException:
     pass
 
 
+def initialize_driver():
+    driver = webdriver.Chrome(options=options)
+
+    retry_load_page(driver, url)
+
+    for cookie in cookies:
+        driver.add_cookie(cookie)
+
+    driver.refresh()
+    time.sleep(2)
+
+    try:
+        talk_to_sage_button = driver.find_element(By.XPATH, "//a[contains(@class, 'LoggedOutBotInfoPage_appButton__UO6NU')]")
+        talk_to_sage_button.click()
+        time.sleep(2)
+    except NoSuchElementException:
+        pass
+
+    return driver
+
+
+
 #Функция ожидания загрузки страницы
 def wait_for_page_load(driver, timeout=10):
     WebDriverWait(driver, timeout).until(
@@ -122,6 +149,12 @@ def remove_emoji(text: str) -> str:
 
 
 def send_message_and_get_response_to_user_question(message):
+    def restart_driver():
+        global driver
+        driver.quit()
+        driver = initialize_driver()
+        wait_for_page_load(driver)
+
     max_retries = 5
     retries = 0
 
@@ -137,6 +170,12 @@ def send_message_and_get_response_to_user_question(message):
             retries += 1
             driver.get(url)
             wait_for_page_load(driver)
+        except NoSuchWindowException:
+            restart_driver()
+            continue
+        except WebDriverException:
+            restart_driver()
+            continue
         except Exception as e:
             logging.warning(f"Unexpected error: {e}")
             break
@@ -144,36 +183,47 @@ def send_message_and_get_response_to_user_question(message):
     last_response = None
     no_new_messages_counter = 0
     while True:
-        time.sleep(1)
-        bot_messages = driver.find_elements(By.CSS_SELECTOR, ".Message_botMessageBubble__CPGMI .Markdown_markdownContainer__UyYrv")
+        try:
+            time.sleep(1)
+            bot_messages = driver.find_elements(By.CSS_SELECTOR, ".Message_botMessageBubble__CPGMI .Markdown_markdownContainer__UyYrv")
 
-        if not bot_messages:
-            no_new_messages_counter += 1
+            if not bot_messages:
+                no_new_messages_counter += 1
+                continue
+
+            last_message_container = bot_messages[-1]
+            html = last_message_container.get_attribute('innerHTML')
+
+            # Создаем объект преобразователя
+            converter = html2text.HTML2Text()
+            converter.ignore_links = True
+            converter.body_width = 0
+
+            # Преобразуем HTML в текст
+            text = converter.handle(html)
+
+            new_response = text.strip()
+
+            if new_response != last_response:
+                last_response = new_response
+                no_new_messages_counter = 0
+            else:
+                no_new_messages_counter += 1
+
+            if no_new_messages_counter >= 5:  # здесь мы устанавливаем таймаут в 5 секунд
+                break
+        except NoSuchWindowException:
+            restart_driver()
             continue
-
-        last_message_container = bot_messages[-1]
-        html = last_message_container.get_attribute('innerHTML')
-
-        # Создаем объект преобразователя
-        converter = html2text.HTML2Text()
-        converter.ignore_links = True
-        converter.body_width = 0
-
-        # Преобразуем HTML в текст
-        text = converter.handle(html)
-
-        new_response = text.strip()
-
-        if new_response != last_response:
-            last_response = new_response
-            no_new_messages_counter = 0
-        else:
-            no_new_messages_counter += 1
-
-        if no_new_messages_counter >= 5:  # здесь мы устанавливаем таймаут в 5 секунд
+        except WebDriverException:
+            restart_driver()
+            continue
+        except Exception as e:
+            logging.warning(f"Unexpected error: {e}")
             break
 
-    return last_response
+    return last_response, not (no_new_messages_counter >= 5), not driver.find_elements(By.CSS_SELECTOR, ".Message_humanOptimisticFooter__zm1hu[data-visible='true']")
+
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -307,6 +357,16 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
         query.answer("Неизвестное действие.")
 
 
+def is_chatgpt_not_respond_error(driver):
+    try:
+        error_element = driver.find_element(By.CSS_SELECTOR, ".Message_botOptimisticFooter__aQiG9[data-visible='true']")
+        if error_element and error_element.text == "ChatGPT did not respond.":
+            return True
+    except NoSuchElementException:
+        pass
+    return False
+
+
 
 def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -407,7 +467,7 @@ def ask_question(update: Update, context: CallbackContext):
 
                 # Здесь вызываем функцию для работы с WebDriver и отправки сообщения на сайт
                 cleaned_user_message = remove_emoji(user_message)
-                response = send_message_and_get_response_to_user_question(cleaned_user_message)
+                response, received_response, message_sent = send_message_and_get_response_to_user_question(cleaned_user_message)
 
                 context.user_data['stop_loading'] = True  # Останавливаем анимацию загрузки
                 loading_thread.join()  # Ждем завершения потока с анимацией загрузки
@@ -418,11 +478,31 @@ def ask_question(update: Update, context: CallbackContext):
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
 
-                context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                context.user_data["ready_to_ask"] = False
+                if message_sent:
+                    if received_response:
+                        if response != "..." and not is_chatgpt_not_respond_error(driver):
+                            context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                            context.user_data["ready_to_ask"] = False
+                            context.user_data[user_id]['gp'] -= 1
+                        else:
+                            update.message.reply_text(
+                                "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+                    else:
+                        update.message.reply_text(
+                            "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+                else:
+                    update.message.reply_text(
+                        "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+
+
             else:
                 update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
-            context.user_data[user_id]['gp'] -= 1
+            if message_sent:
+                if received_response:
+                    if response != "..." and not is_chatgpt_not_respond_error(driver):
+                        context.user_data[user_id]['gp'] -= 1
+
+
         else:
             update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
 
@@ -480,5 +560,14 @@ def main():
     updater.idle()
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    while True:
+        try:
+            main()
+        except Exception as e:
+            # Здесь вы можете добавить отправку сообщения с ошибкой
+            # например, используя функцию send_message
+            # send_message(chat_id, f"Произошла ошибка: {str(e)}")
+            print(f"Произошла ошибка: {str(e)}")
+            print("Перезапуск бота через 5 секунд...")
+            time.sleep(5)
