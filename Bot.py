@@ -18,6 +18,11 @@ import traceback
 
 import sys
 
+import poe
+
+import string
+
+
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
@@ -26,14 +31,6 @@ from telegram import LabeledPrice, PreCheckoutQuery
 from telegram.ext import PreCheckoutQueryHandler
 from telegram import ChatAction
 from telegram.ext import BaseFilter
-
-from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchWindowException, WebDriverException
 
 
 payment_links = {
@@ -46,82 +43,8 @@ payment_links = {
 }
 
 
-TELEGRAM_BOT_TOKEN = "YOUR_API"
-url = "https://poe.com/ChatGPT"
-
-options = webdriver.ChromeOptions()
-#options.add_argument('--headless')
-options.add_argument("--disable-gpu")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-driver = webdriver.Chrome(options=options)
-
-
-with open("cookies.json", "r") as f:
-    cookies = json.load(f)
-
-def is_error_page(driver):
-    if "404" in driver.title or "https://poe.com/universal_link_page?displayName=ChatGPT" in driver.current_url:
-        return True
-    return False
-
-def is_correct_url(driver, correct_url):
-    return driver.current_url == correct_url
-
-def retry_load_page(driver, url, max_retries=5):
-    retries = 0
-    while retries < max_retries:
-        driver.get(url)
-        time.sleep(2)
-        if not is_error_page(driver) and is_correct_url(driver, url):
-            break
-        retries += 1
-
-retry_load_page(driver, url)
-
-for cookie in cookies:
-    driver.add_cookie(cookie)
-
-driver.refresh()
-time.sleep(2)
-
-
-try:
-    talk_to_sage_button = driver.find_element(By.XPATH, "//a[contains(@class, 'LoggedOutBotInfoPage_appButton__UO6NU')]")
-    talk_to_sage_button.click()
-    time.sleep(2)
-except NoSuchElementException:
-    pass
-
-
-def initialize_driver():
-    driver = webdriver.Chrome(options=options)
-
-    retry_load_page(driver, url)
-
-    for cookie in cookies:
-        driver.add_cookie(cookie)
-
-    driver.refresh()
-    time.sleep(2)
-
-    try:
-        talk_to_sage_button = driver.find_element(By.XPATH, "//a[contains(@class, 'LoggedOutBotInfoPage_appButton__UO6NU')]")
-        talk_to_sage_button.click()
-        time.sleep(2)
-    except NoSuchElementException:
-        pass
-
-    return driver
-
-
-
-#Функция ожидания загрузки страницы
-def wait_for_page_load(driver, timeout=10):
-    WebDriverWait(driver, timeout).until(
-        lambda d: d.execute_script("return document.readyState") == "complete"
-    )
-
+#TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao" #Рабочий
+TELEGRAM_BOT_TOKEN = "5785989131:AAFFcu7ekjOTXiMYK5ptMuxsamNVk8i65j0" #Тестовый
 
 def remove_emoji(text: str) -> str:
     emoji_pattern = re.compile("["
@@ -148,82 +71,18 @@ def remove_emoji(text: str) -> str:
     return emoji_pattern.sub(r'', text)
 
 
+client = poe.Client('Z2nTcuapVPT41-2IdLHnyA%3D%3D')
+
+def generate_random_name():
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+
 def send_message_and_get_response_to_user_question(message):
-    def restart_driver():
-        global driver
-        driver.quit()
-        driver = webdriver.Chrome(options=options)
-        driver.get(url)
-        wait_for_page_load(driver)
-
-    max_retries = 5
-    retries = 0
-
-    while retries < max_retries:
-        try:
-            message_input = driver.find_element(By.CSS_SELECTOR, ".ChatMessageInputView_textInput__Aervw")
-            message_input.clear()
-
-            message_input.send_keys(message)
-            message_input.send_keys(Keys.RETURN)
-            break
-        except NoSuchElementException:
-            retries += 1
-            driver.get(url)
-            wait_for_page_load(driver)
-        except NoSuchWindowException:
-            restart_driver()
-            continue
-        except WebDriverException:
-            restart_driver()
-            continue
-        except Exception as e:
-            logging.warning(f"Unexpected error: {e}")
-            break
-
-    last_response = None
-    no_new_messages_counter = 0
-    while True:
-        try:
-            time.sleep(1)
-            bot_messages = driver.find_elements(By.CSS_SELECTOR, ".Message_botMessageBubble__CPGMI .Markdown_markdownContainer__UyYrv")
-
-            if not bot_messages:
-                no_new_messages_counter += 1
-                continue
-
-            last_message_container = bot_messages[-1]
-            html = last_message_container.get_attribute('innerHTML')
-
-            # Создаем объект преобразователя
-            converter = html2text.HTML2Text()
-            converter.ignore_links = True
-            converter.body_width = 0
-
-            # Преобразуем HTML в текст
-            text = converter.handle(html)
-
-            new_response = text.strip()
-
-            if new_response != last_response:
-                last_response = new_response
-                no_new_messages_counter = 0
-            else:
-                no_new_messages_counter += 1
-
-            if no_new_messages_counter >= 5:  # здесь мы устанавливаем таймаут в 5 секунд
-                break
-        except NoSuchWindowException:
-            restart_driver()
-            continue
-        except WebDriverException:
-            restart_driver()
-            continue
-        except Exception as e:
-            logging.warning(f"Unexpected error: {e}")
-            break
-
-    return last_response
+    random_name_bot = generate_random_name()
+    client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+    response = ""
+    for chunk in client.send_message(random_name_bot, message):
+        response += chunk["text_new"]
+    return response
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -239,13 +98,6 @@ def add_new_user_if_not_exists(user_id, conn):
         cur.execute("INSERT INTO users (user_id, gp) VALUES (%s, %s)", (user_id, initial_gp))
         conn.commit()
     cur.close()
-
-
-# Параметры подключения к базе данных
-db_host = "fromTaylor.mysql.pythonanywhere-services.com" # Обычно что-то вроде yourusername.mysql.pythonanywhere-services.com
-db_user = "fromTaylor"
-db_password = "2!TeY7X5aremMiH"
-db_name = "fromTaylor$default"
 
 
 def start(update: Update, context: CallbackContext):
