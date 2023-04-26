@@ -1,22 +1,12 @@
-import json
-
 import time
 
 import logging
-
-import html2text
 
 import threading
 
 from typing import List
 
 import random
-
-import re
-
-import traceback
-
-import sys
 
 import poe
 
@@ -27,10 +17,7 @@ import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
 from telegram import ReplyKeyboardMarkup
-from telegram import LabeledPrice, PreCheckoutQuery
-from telegram.ext import PreCheckoutQueryHandler
 from telegram import ChatAction
-from telegram.ext import BaseFilter
 
 
 payment_links = {
@@ -42,45 +29,22 @@ payment_links = {
     "1_year": "https://poe.com/Sage1Year",
 }
 
-
 #TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao" #Рабочий
+
 TELEGRAM_BOT_TOKEN = "5785989131:AAFFcu7ekjOTXiMYK5ptMuxsamNVk8i65j0" #Тестовый
 
-def remove_emoji(text: str) -> str:
-    emoji_pattern = re.compile("["
-                           u"\U0001F600-\U0001F64F"  # emoticons
-                           u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                           u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                           u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                           u"\U00002500-\U00002BEF"  # chinese characters
-                           u"\U00002702-\U000027B0"
-                           u"\U00002702-\U000027B0"
-                           u"\U000024C2-\U0001F251"
-                           u"\U0001f926-\U0001f937"
-                           u"\U00010000-\U0010ffff"
-                           u"\u2640-\u2642"
-                           u"\u2600-\u2B55"
-                           u"\u200d"
-                           u"\u23cf"
-                           u"\u23e9"
-                           u"\u231a"
-                           u"\ufe0f"  # dingbats
-                           u"\u3030"
-                           "]+", re.UNICODE)
-
-    return emoji_pattern.sub(r'', text)
-
-
 client = poe.Client('Z2nTcuapVPT41-2IdLHnyA%3D%3D')
+
 
 def generate_random_name():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
 
+
 def send_message_and_get_response_to_user_question(message):
-    random_name_bot = generate_random_name()
-    client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+    #random_name_bot = "02dc6wx6ay83t8s" #generate_random_name()
+    #client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
     response = ""
-    for chunk in client.send_message(random_name_bot, message):
+    for chunk in client.send_message("02dc6wx6ay83t8s", message): #random_name_bot, message):
         response += chunk["text_new"]
     return response
 
@@ -108,9 +72,6 @@ def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
                               reply_markup=reply_markup)
-
-
-
 
 
 def is_user_subscribed(bot, user_id, channel_username):
@@ -142,7 +103,7 @@ def check_subscription(update: Update, context: CallbackContext):
 
 def get_user_data(user_id, user_data):
     if user_id not in user_data:
-        user_data[user_id] = {'gp': 100}
+        user_data[user_id] = {'gp': 10000}
     return user_data[user_id]
 
 def update_user_data(user_id, chat_data, updated_data):
@@ -307,8 +268,7 @@ def ask_question(update: Update, context: CallbackContext):
                 loading_thread.start()
 
                 # Здесь вызываем функцию для работы с WebDriver и отправки сообщения на сайт
-                cleaned_user_message = remove_emoji(user_message)
-                response = send_message_and_get_response_to_user_question(cleaned_user_message)
+                response = send_message_and_get_response_to_user_question(user_message)
 
                 context.user_data['stop_loading'] = True  # Останавливаем анимацию загрузки
                 loading_thread.join()  # Ждем завершения потока с анимацией загрузки
@@ -319,17 +279,21 @@ def ask_question(update: Update, context: CallbackContext):
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
 
-                context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                context.user_data["ready_to_ask"] = False
-
-            else:
-                update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
+                if response:
+                    context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                    context.user_data["ready_to_ask"] = False
+                else:
+                    update.message.reply_text(
+                        "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже."
+                    )
 
             context.user_data[user_id]['gp'] -= 1
 
         else:
             update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
-
+    else:
+        update.message.reply_text(
+            "Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
 
 def send_typing_animation(update: Update, context: CallbackContext, messages: List[str], delay: int,
                           loop: bool = False):
@@ -385,13 +349,4 @@ def main():
 
 
 if __name__ == "__main__":
-    while True:
-        try:
-            main()
-        except Exception as e:
-            # Здесь вы можете добавить отправку сообщения с ошибкой
-            # например, используя функцию send_message
-            # send_message(chat_id, f"Произошла ошибка: {str(e)}")
-            print(f"Произошла ошибка: {str(e)}")
-            print("Перезапуск бота через 5 секунд...")
-            time.sleep(5)
+    main()
