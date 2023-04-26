@@ -46,7 +46,7 @@ payment_links = {
 }
 
 
-TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao"
+TELEGRAM_BOT_TOKEN = "YOUR_API"
 url = "https://poe.com/ChatGPT"
 
 options = webdriver.ChromeOptions()
@@ -152,7 +152,8 @@ def send_message_and_get_response_to_user_question(message):
     def restart_driver():
         global driver
         driver.quit()
-        driver = initialize_driver()
+        driver = webdriver.Chrome(options=options)
+        driver.get(url)
         wait_for_page_load(driver)
 
     max_retries = 5
@@ -165,11 +166,6 @@ def send_message_and_get_response_to_user_question(message):
 
             message_input.send_keys(message)
             message_input.send_keys(Keys.RETURN)
-            try:
-                driver.find_element(By.CSS_SELECTOR, ".Message_humanOptimisticFooter__zm1hu[data-visible='true']")
-                message_sent = False
-            except NoSuchElementException:
-                message_sent = True
             break
         except NoSuchElementException:
             retries += 1
@@ -184,14 +180,6 @@ def send_message_and_get_response_to_user_question(message):
         except Exception as e:
             logging.warning(f"Unexpected error: {e}")
             break
-
-    # Вставка нового кода
-    try:
-        driver.find_element(By.CSS_SELECTOR, ".Message_humanOptimisticFooter__zm1hu[data-visible='true']")
-        message_sent = False
-    except NoSuchElementException:
-        message_sent = True
-    # Конец вставки нового кода
 
     last_response = None
     no_new_messages_counter = 0
@@ -235,9 +223,7 @@ def send_message_and_get_response_to_user_question(message):
             logging.warning(f"Unexpected error: {e}")
             break
 
-    return last_response, not (no_new_messages_counter >= 5), message_sent
-
-
+    return last_response
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -371,21 +357,6 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
         query.answer("Неизвестное действие.")
 
 
-def is_chatgpt_not_respond_error(driver, response):
-    if response == "...":
-        return True
-
-    try:
-        error_element = driver.find_element(By.CSS_SELECTOR, ".Message_botOptimisticFooter__aQiG9[data-visible='true']")
-        if error_element and error_element.text == "ChatGPT did not respond.":
-            return True
-    except NoSuchElementException:
-        pass
-    return False
-
-
-
-
 def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     user_data = get_user_data(user_id, context.user_data)
@@ -485,7 +456,7 @@ def ask_question(update: Update, context: CallbackContext):
 
                 # Здесь вызываем функцию для работы с WebDriver и отправки сообщения на сайт
                 cleaned_user_message = remove_emoji(user_message)
-                response, received_response, message_sent = send_message_and_get_response_to_user_question(cleaned_user_message)
+                response = send_message_and_get_response_to_user_question(cleaned_user_message)
 
                 context.user_data['stop_loading'] = True  # Останавливаем анимацию загрузки
                 loading_thread.join()  # Ждем завершения потока с анимацией загрузки
@@ -496,22 +467,13 @@ def ask_question(update: Update, context: CallbackContext):
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
 
-                if message_sent:
-                    if received_response and not is_chatgpt_not_respond_error(driver, response):
-                        context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                        context.user_data["ready_to_ask"] = False
-                    else:
-                        update.message.reply_text(
-                            "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
-                else:
-                    update.message.reply_text(
-                        "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже.")
+                context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                context.user_data["ready_to_ask"] = False
 
             else:
                 update.message.reply_text("Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
-            if received_response and not is_chatgpt_not_respond_error(driver, response):
-                context.user_data[user_id]['gp'] -= 1
 
+            context.user_data[user_id]['gp'] -= 1
 
         else:
             update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
