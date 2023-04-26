@@ -12,6 +12,7 @@ import poe
 
 import string
 
+from firebase_admin import credentials, initialize_app, db
 
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -33,18 +34,47 @@ payment_links = {
 
 TELEGRAM_BOT_TOKEN = "5785989131:AAFFcu7ekjOTXiMYK5ptMuxsamNVk8i65j0" #Тестовый
 
-client = poe.Client('Z2nTcuapVPT41-2IdLHnyA%3D%3D')
+client = poe.Client('Z2nTcuapVPD%3D')
+
+cred = credentials.Certificate("telegabot-16d96b-ae3594244d.json")
+initialize_app(cred, {'databaseURL': 'https://west1.firebasedatabase.app/'})
 
 
 def generate_random_name():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
 
 
-def send_message_and_get_response_to_user_question(message):
+def add_new_user(user_id, random_name_bot):
+    ref = db.reference(f'users/{user_id}')
+    ref.set({
+        'random_name_bot': random_name_bot,
+        'gp': 15,
+        'subscription': False
+    })
+
+
+def user_exists(user_id):
+    ref = db.reference(f'users/{user_id}')
+    return ref.get() is not None
+
+
+def get_user_data(user_id, field):
+    ref = db.reference(f'users/{user_id}/{field}')
+    return ref.get()
+
+
+def set_user_data(user_id, field, value):
+    ref = db.reference(f'users/{user_id}/{field}')
+    ref.set(value)
+
+
+def send_message_and_get_response_to_user_question(update: Update, message):
     #random_name_bot = "02dc6wx6ay83t8s" #generate_random_name()
     #client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+    user_id = update.effective_user.id
+    name_bot = get_user_data(user_id, 'random_name_bot')
     response = ""
-    for chunk in client.send_message("02dc6wx6ay83t8s", message): #random_name_bot, message):
+    for chunk in client.send_message(name_bot, message): #random_name_bot, message):
         response += chunk["text_new"]
     return response
 
@@ -53,23 +83,15 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
-def add_new_user_if_not_exists(user_id, conn):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-    user_exists = cur.fetchone()
-    if not user_exists:
-        initial_gp = 15
-        cur.execute("INSERT INTO users (user_id, gp) VALUES (%s, %s)", (user_id, initial_gp))
-        conn.commit()
-    cur.close()
-
-
 def start(update: Update, context: CallbackContext):
     keyboard = [
         ["Задать вопрос 🔍", "Возможности"],
         ["Premium-подписка"], ["Мои данные"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    user_id = update.effective_user.id
+    random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+    add_new_user(user_id, random_name_bot)
     update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
                               reply_markup=reply_markup)
 
@@ -101,11 +123,6 @@ def check_subscription(update: Update, context: CallbackContext):
         return False
 
 
-def get_user_data(user_id, user_data):
-    if user_id not in user_data:
-        user_data[user_id] = {'gp': 10000}
-    return user_data[user_id]
-
 def update_user_data(user_id, chat_data, updated_data):
     chat_data[user_id].update(updated_data)
 
@@ -113,7 +130,8 @@ def update_user_data(user_id, chat_data, updated_data):
 def my_data(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     user_data = get_user_data(user_id, context.user_data)
-    update.message.reply_text(f"Ваш тарифный план: {user_data['gp']}GP")
+    current_gp = get_user_data(user_id, 'gp')
+    update.message.reply_text(f"Ваш тарифный план: {current_gp}GP")
 
 
 def handle_menu(update: Update, context: CallbackContext):
@@ -174,8 +192,13 @@ def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     user_data = get_user_data(user_id, context.user_data)
 
+    if not user_exists(user_id):
+        # Если нет, добавляем его
+        random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+        add_new_user(user_id, random_name_bot)
+
     if context.user_data.get("ready_to_ask"):
-        if user_data['gp'] > 0:
+        if get_user_data(user_id, 'gp') > 0:
             context.user_data["ready_to_ask"] = True
             if context.user_data.get("ready_to_ask"):
                 user_message = update.message.text
@@ -287,7 +310,8 @@ def ask_question(update: Update, context: CallbackContext):
                         "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже."
                     )
 
-            context.user_data[user_id]['gp'] -= 1
+            current_gp = get_user_data(user_id, 'gp')
+            set_user_data(user_id, 'gp', current_gp - 1)
 
         else:
             update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
