@@ -30,14 +30,14 @@ payment_links = {
     "1_year": "https://poe.com/Sage1Year",
 }
 
-#TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao" #Рабочий
+TELEGRAM_BOT_TOKEN = "62484" #Рабочий
 
-TELEGRAM_BOT_TOKEN = "5785989131:AAFFcu7ekjOTXiMYK5ptMuxsamNVk8i65j0" #Тестовый
+#TELEGRAM_BOT_TOKEN = "5785989" #Тестовый
 
-client = poe.Client('Z2nTcuapVPD%3D')
+client = poe.Client('Z2nTcuapV%3D')
 
-cred = credentials.Certificate("telegabot-16d96b-ae3594244d.json")
-initialize_app(cred, {'databaseURL': 'https://west1.firebasedatabase.app/'})
+cred = credentials.Certificate("telegabot-16d96-firebase-adminsdk-vsi1b-ae3594244d.json")
+initialize_app(cred, {'databaseURL': 'https://telegabot-16d96-default-rtdb.europe-west1.firebasedatabase.app/'})
 
 
 def generate_random_name():
@@ -49,7 +49,7 @@ def add_new_user(user_id, random_name_bot):
     ref.set({
         'random_name_bot': random_name_bot,
         'gp': 15,
-        'subscription': False
+        'subscription': "none"
     })
 
 
@@ -73,9 +73,11 @@ def send_message_and_get_response_to_user_question(update: Update, message):
     #client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
     user_id = update.effective_user.id
     name_bot = get_user_data(user_id, 'random_name_bot')
+    print(name_bot)
     response = ""
-    for chunk in client.send_message(name_bot, message): #random_name_bot, message):
+    for chunk in client.send_message(name_bot, message):  # random_name_bot, message):
         response += chunk["text_new"]
+
     return response
 
 
@@ -86,14 +88,31 @@ logger = logging.getLogger(__name__)
 def start(update: Update, context: CallbackContext):
     keyboard = [
         ["Задать вопрос 🔍", "Возможности"],
-        ["Premium-подписка"], ["Мои данные"]
+        ["Premium-подписка"], ["Мои данные"], ["Отчистить переписку"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     user_id = update.effective_user.id
-    random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
-    add_new_user(user_id, random_name_bot)
+
+    user_data = get_user_data(user_id, "gp")
+    if user_data == None:
+        random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+        add_new_user(user_id, random_name_bot)
+        client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+        user_data = get_user_data(user_id, 'gp')
+        while user_data == None:
+            print(user_data)
+
     update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
                               reply_markup=reply_markup)
+
+
+def new_bot(user_id):
+    random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+    client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+    ref = db.reference(f'users/{user_id}')
+    ref.update({
+        'random_name_bot': random_name_bot,
+    })
 
 
 def is_user_subscribed(bot, user_id, channel_username):
@@ -136,6 +155,17 @@ def my_data(update: Update, context: CallbackContext):
 
 def handle_menu(update: Update, context: CallbackContext):
     user_message = update.message.text
+
+    user_id = update.message.from_user.id
+    user_data = get_user_data(user_id, 'gp')
+    if user_data == None:
+        random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+        add_new_user(user_id, random_name_bot)
+        client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
+        user_data = get_user_data(user_id, 'gp')
+        while user_data == None:
+            print(user_data)
+
     if user_message == "Задать вопрос 🔍":
         if check_subscription(update, context):
             context.user_data["ready_to_ask"] = True
@@ -169,9 +199,14 @@ def handle_menu(update: Update, context: CallbackContext):
                                  ]))
     elif user_message == "Мои данные":
         my_data(update, context)
+
+    elif user_message == "Отчистить переписку":
+        new_bot(user_id)
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Переписка очищена", parse_mode=telegram.ParseMode.HTML)
     else:
         if "ready_to_ask" in context.user_data:
             context.user_data["ready_to_ask"] = False
+
 
 
 def handle_inline_keyboard_button_click(update: Update, context: CallbackContext):
@@ -190,15 +225,11 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
 
 def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    user_data = get_user_data(user_id, context.user_data)
-
-    if not user_exists(user_id):
-        # Если нет, добавляем его
-        random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
-        add_new_user(user_id, random_name_bot)
+    user_data = get_user_data(user_id, 'gp')
 
     if context.user_data.get("ready_to_ask"):
-        if get_user_data(user_id, 'gp') > 0:
+
+        if user_data > 0:
             context.user_data["ready_to_ask"] = True
             if context.user_data.get("ready_to_ask"):
                 user_message = update.message.text
@@ -281,6 +312,9 @@ def ask_question(update: Update, context: CallbackContext):
                             logger.warning("New message is the same as the previous one. Skipping.")
 
                         context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
+
+
                         time.sleep(delay)
 
                 context.user_data['stop_loading'] = False  # Сбрасываем значение перед каждым вопросом
@@ -291,7 +325,7 @@ def ask_question(update: Update, context: CallbackContext):
                 loading_thread.start()
 
                 # Здесь вызываем функцию для работы с WebDriver и отправки сообщения на сайт
-                response = send_message_and_get_response_to_user_question(user_message)
+                response = send_message_and_get_response_to_user_question(update, user_message)
 
                 context.user_data['stop_loading'] = True  # Останавливаем анимацию загрузки
                 loading_thread.join()  # Ждем завершения потока с анимацией загрузки
@@ -359,6 +393,7 @@ def main():
     dp.add_handler(MessageHandler(Filters.regex('^Возможности$'), handle_menu))
     dp.add_handler(MessageHandler(Filters.regex('^Premium-подписка$'), handle_menu))
     dp.add_handler(MessageHandler(Filters.regex('^Мои данные$'), handle_menu))
+    dp.add_handler(MessageHandler(Filters.regex('^Отчистить переписку$'), handle_menu))
 
     dp.add_handler(CallbackQueryHandler(handle_check_subscription, pattern="^check_subscription$"))
     dp.add_handler(MessageHandler(Filters.text, ask_question))
