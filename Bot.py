@@ -20,6 +20,12 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from telegram import ReplyKeyboardMarkup
 from telegram import ChatAction
 
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.types import ParseMode
+from aiogram.utils import executor
+
 
 payment_links = {
     "25_requests": "https://poe.com/Sage25",
@@ -30,11 +36,9 @@ payment_links = {
     "1_year": "https://poe.com/Sage1Year",
 }
 
-TELEGRAM_BOT_TOKEN = "62484" #Рабочий
+TELEGRAM_BOT_TOKEN = "API" #Тестовый
 
-#TELEGRAM_BOT_TOKEN = "5785989" #Тестовый
-
-client = poe.Client('Z2nTcuapV%3D')
+client = poe.Client('API')
 
 cred = credentials.Certificate("telegabot-16d96-firebase-adminsdk-vsi1b-ae3594244d.json")
 initialize_app(cred, {'databaseURL': 'https://telegabot-16d96-default-rtdb.europe-west1.firebasedatabase.app/'})
