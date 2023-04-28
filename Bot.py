@@ -10,6 +10,8 @@ import random
 
 import poe
 
+import os
+
 import string
 
 from firebase_admin import credentials, initialize_app, db
@@ -27,6 +29,7 @@ from aiogram.types import ParseMode
 from aiogram.utils import executor
 
 
+
 payment_links = {
     "25_requests": "https://poe.com/Sage25",
     "50_requests": "https://poe.com/Sage50",
@@ -36,19 +39,27 @@ payment_links = {
     "1_year": "https://poe.com/Sage1Year",
 }
 
-TELEGRAM_BOT_TOKEN = "API" #Тестовый
+#TELEGRAM_BOT_TOKEN = "6248465953:AAFR9gek247GVqFeo4t-LgvwI5TEA8Nr9Ao" #Рабочий
 
-client = poe.Client('API')
+TELEGRAM_BOT_TOKEN = "5785989131:AAFFcu7ekjOTXiMYK5ptMuxsamNVk8i65j0" #Тестовый
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+dp2 = Dispatcher(bot)
+dp2.middleware.setup(LoggingMiddleware())
+
+client = poe.Client('Z2nTcuapVPT41-2IdLHnyA%3D%3D')
 
 cred = credentials.Certificate("telegabot-16d96-firebase-adminsdk-vsi1b-ae3594244d.json")
 initialize_app(cred, {'databaseURL': 'https://telegabot-16d96-default-rtdb.europe-west1.firebasedatabase.app/'})
 
 
-def generate_random_name():
+async def generate_random_name():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
 
 
-def add_new_user(user_id, random_name_bot):
+async def add_new_user(user_id, random_name_bot):
     ref = db.reference(f'users/{user_id}')
     ref.set({
         'random_name_bot': random_name_bot,
@@ -57,22 +68,22 @@ def add_new_user(user_id, random_name_bot):
     })
 
 
-def user_exists(user_id):
+async def user_exists(user_id):
     ref = db.reference(f'users/{user_id}')
     return ref.get() is not None
 
 
-def get_user_data(user_id, field):
+async def get_user_data(user_id, field):
     ref = db.reference(f'users/{user_id}/{field}')
     return ref.get()
 
 
-def set_user_data(user_id, field, value):
+async def set_user_data(user_id, field, value):
     ref = db.reference(f'users/{user_id}/{field}')
     ref.set(value)
 
 
-def send_message_and_get_response_to_user_question(update: Update, message):
+async def send_message_and_get_response_to_user_question(update: Update, message):
     #random_name_bot = "02dc6wx6ay83t8s" #generate_random_name()
     #client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
     user_id = update.effective_user.id
@@ -89,7 +100,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: CallbackContext):
     keyboard = [
         ["Задать вопрос 🔍", "Возможности"],
         ["Premium-подписка"], ["Мои данные"], ["Отчистить переписку"]
@@ -97,20 +108,21 @@ def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     user_id = update.effective_user.id
 
-    user_data = get_user_data(user_id, "gp")
-    if user_data == None:
+    user_data = await get_user_data(user_id, "gp")
+    if user_data is None:
         random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
-        add_new_user(user_id, random_name_bot)
+        await add_new_user(user_id, random_name_bot)
         client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
-        user_data = get_user_data(user_id, 'gp')
-        while user_data == None:
+        user_data = await get_user_data(user_id, 'gp')
+        while user_data is None:
             print(user_data)
 
-    update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
+    await update.message.reply_text("Привет! Я ChatGPT! Я готов ответить на любой твой вопрос! Не стесняйся, задавай!",
                               reply_markup=reply_markup)
 
 
-def new_bot(user_id):
+
+async def new_bot(user_id):
     random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
     client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
     ref = db.reference(f'users/{user_id}')
@@ -119,63 +131,60 @@ def new_bot(user_id):
     })
 
 
-def is_user_subscribed(bot, user_id, channel_username):
+async def is_user_subscribed(bot, user_id, channel_username):
     try:
-        chat_member = bot.get_chat_member(chat_id=channel_username, user_id=user_id)
+        chat_member = await bot.get_chat_member(chat_id=channel_username, user_id=user_id)
         return chat_member.status in ['member', 'creator', 'administrator']
     except Exception as e:
         print(f"Error checking subscription: {e}")
         return False
 
-def handle_check_subscription(update: Update, context: CallbackContext):
+async def handle_check_subscription(update: Update, context: CallbackContext):
     query = update.callback_query
 
-    if check_subscription(update, context):
-        query.edit_message_text("Спасибо за подписку! Теперь вы можете задать вопрос.")
+    if await check_subscription(update, context):
+        await query.edit_message_text("Спасибо за подписку! Теперь вы можете задать вопрос.")
     else:
-        query.answer("Пожалуйста, подпишитесь на канал и нажмите кнопку 'Проверить подписку' еще раз.")
+        await query.answer("Пожалуйста, подпишитесь на канал и нажмите кнопку 'Проверить подписку' еще раз.")
 
-
-def check_subscription(update: Update, context: CallbackContext):
+async def check_subscription(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     channel_username = '@NeuroNewsGpt'
 
-    if is_user_subscribed(context.bot, user_id, channel_username):
+    if await is_user_subscribed(context.bot, user_id, channel_username):
         return True
     else:
         return False
 
-
-def update_user_data(user_id, chat_data, updated_data):
+async def update_user_data(user_id, chat_data, updated_data):
     chat_data[user_id].update(updated_data)
 
-
-def my_data(update: Update, context: CallbackContext):
+async def my_data(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     user_data = get_user_data(user_id, context.user_data)
-    current_gp = get_user_data(user_id, 'gp')
+    current_gp = await get_user_data(user_id, 'gp')
     update.message.reply_text(f"Ваш тарифный план: {current_gp}GP")
 
 
-def handle_menu(update: Update, context: CallbackContext):
+
+async def handle_menu(update: Update, context: CallbackContext):
     user_message = update.message.text
 
     user_id = update.message.from_user.id
-    user_data = get_user_data(user_id, 'gp')
+    user_data = await get_user_data(user_id, 'gp')
     if user_data == None:
         random_name_bot = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
-        add_new_user(user_id, random_name_bot)
+        await add_new_user(user_id, random_name_bot)
         client.create_bot(random_name_bot, prompt="", base_model="chinchilla")
-        user_data = get_user_data(user_id, 'gp')
+        user_data = await get_user_data(user_id, 'gp')
         while user_data == None:
             print(user_data)
 
     if user_message == "Задать вопрос 🔍":
-        if check_subscription(update, context):
+        if await check_subscription(update, context):
             context.user_data["ready_to_ask"] = True
             update.message.reply_text("Пожалуйста, задай свой вопрос.")
         else:
-            # Текст, который будет отправлен, если пользователь не подписан
             update.message.reply_text("Чтобы задать вопрос, пожалуйста, подпишитесь на наш канал @NeuroNewsGpt",
                                       reply_markup=InlineKeyboardMarkup([
                                           [InlineKeyboardButton("Подписаться", url="https://t.me/NeuroNewsGpt"),
@@ -213,32 +222,28 @@ def handle_menu(update: Update, context: CallbackContext):
 
 
 
-def handle_inline_keyboard_button_click(update: Update, context: CallbackContext):
+async def handle_inline_keyboard_button_click(update: Update, context: CallbackContext):
     query = update.callback_query
     callback_data = query.data
 
     if callback_data == "ask_question":
         context.user_data["ready_to_ask"] = True
-        query.edit_message_text("Пожалуйста, задай свой вопрос.")
+        await query.edit_message_text("Пожалуйста, задай свой вопрос.")
     elif callback_data in payment_links:
         payment_link = payment_links[callback_data]
-        query.edit_message_text(f"Для оплаты перейдите по ссылке: {payment_link}")
+        await query.edit_message_text(f"Для оплаты перейдите по ссылке: {payment_link}")
     else:
-        query.answer("Неизвестное действие.")
+        await query.answer("Неизвестное действие.")
 
 
-def ask_question(update: Update, context: CallbackContext):
+async def ask_question(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    user_data = get_user_data(user_id, 'gp')
-
+    user_data = await get_user_data(user_id, 'gp')
     if context.user_data.get("ready_to_ask"):
-
         if user_data > 0:
             context.user_data["ready_to_ask"] = True
             if context.user_data.get("ready_to_ask"):
                 user_message = update.message.text
-
-                # Создаем список сообщений для анимации загрузки
                 loading_messages = [
                     "ChatGPT активирует сверхсекретные знания... 🤖",
                     "Подключаюсь к великому искусственному интеллекту... 💡",
@@ -292,9 +297,9 @@ def ask_question(update: Update, context: CallbackContext):
 
                 loading_message = random.choice(loading_messages)
 
-                def send_typing_animation(update, context, loading_messages, delay, random_choice=False):
-                    loading_msg = context.bot.send_message(chat_id=update.effective_chat.id, text=loading_messages[0])
-
+                async def send_typing_animation(update, context, loading_messages, delay, random_choice=False):
+                    loading_msg = await context.bot.send_message(chat_id=update.effective_chat.id,
+                                                                 text=loading_messages[0])
                     prev_loading_message = None
                     while not context.user_data.get("stop_loading"):
                         if random_choice:
@@ -302,62 +307,46 @@ def ask_question(update: Update, context: CallbackContext):
                         else:
                             loading_message = loading_messages.pop(0)
                             loading_messages.append(loading_message)
-
-                        # Проверка, отличается ли новое сообщение от предыдущего
                         if loading_message != prev_loading_message:
                             try:
-                                context.bot.edit_message_text(chat_id=update.effective_chat.id,
-                                                              message_id=loading_msg.message_id,
-                                                              text=loading_message)
-                                prev_loading_message = loading_message  # Обновление предыдущего сообщения
+                                await context.bot.edit_message_text(chat_id=update.effective_chat.id,
+                                                                    message_id=loading_msg.message_id,
+                                                                    text=loading_message)
+                                prev_loading_message = loading_message
                             except telegram.error.BadRequest as e:
                                 logger.warning(f"Failed to edit message: {e}")
                         else:
                             logger.warning("New message is the same as the previous one. Skipping.")
+                        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+                        await asyncio.sleep(delay)
 
-                        context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-
-
-
-                        time.sleep(delay)
-
-                context.user_data['stop_loading'] = False  # Сбрасываем значение перед каждым вопросом
-
-                # Создаем и запускаем поток для отправки анимации загрузки
-                loading_thread = threading.Thread(target=send_typing_animation,
-                                                  args=(update, context, loading_messages, 2, True))
-                loading_thread.start()
-
-                # Здесь вызываем функцию для работы с WebDriver и отправки сообщения на сайт
-                response = send_message_and_get_response_to_user_question(update, user_message)
-
-                context.user_data['stop_loading'] = True  # Останавливаем анимацию загрузки
-                loading_thread.join()  # Ждем завершения потока с анимацией загрузки
-
-                # Удаляем сообщение с анимацией загрузки
+                context.user_data['stop_loading'] = False
+                loading_thread = asyncio.create_task(send_typing_animation(update, context, loading_messages, 2, True))
+                response = await send_message_and_get_response_to_user_question(update, user_message)
+                context.user_data['stop_loading'] = True
+                await loading_thread
                 try:
-                    context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id + 1)
+                    await context.bot.delete_message(chat_id=update.effective_chat.id,
+                                                     message_id=update.message.message_id + 1)
                 except Exception as e:
                     logger.warning(f"Failed to delete loading message: {e}")
-
                 if response:
-                    context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+                    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
                     context.user_data["ready_to_ask"] = False
                 else:
-                    update.message.reply_text(
+                    await update.message.reply_text(
                         "Извините, возникла ошибка при отправке сообщения. Повторите свой запрос чуть позже."
                     )
-
-            current_gp = get_user_data(user_id, 'gp')
-            set_user_data(user_id, 'gp', current_gp - 1)
-
+            current_gp = await get_user_data(user_id, 'gp')
+            await set_user_data(user_id, 'gp', current_gp - 1)
         else:
-            update.message.reply_text("У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
+            await update.message.reply_text(
+                "У вас недостаточно GP для совершения запроса. Пожалуйста, пополните баланс.")
     else:
-        update.message.reply_text(
+        await update.message.reply_text(
             "Если вы хотите задать у меня вопрос, то нажимайте на кнопку в меню 'Задать вопрос'! И я с удовольствием отвечу вам.")
 
-def send_typing_animation(update: Update, context: CallbackContext, messages: List[str], delay: int,
+async def send_typing_animation(update: Update, context: CallbackContext, messages: List[str], delay: int,
                           loop: bool = False):
     index = 0
     chat_id = update.effective_chat.id
@@ -366,12 +355,12 @@ def send_typing_animation(update: Update, context: CallbackContext, messages: Li
     while not context.user_data.get('stop_loading'):
         try:
             if message_id is None:
-                sent_message = context.bot.send_message(chat_id=chat_id, text=messages[index])
+                sent_message = await context.bot.send_message(chat_id=chat_id, text=messages[index])
                 message_id = sent_message.message_id
             else:
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=messages[index])
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=messages[index])
 
-            time.sleep(delay)
+            await asyncio.sleep(delay)
 
             index += 1
             if index == len(messages):
@@ -384,11 +373,11 @@ def send_typing_animation(update: Update, context: CallbackContext, messages: Li
             break
 
 
-def error(update: Update, context: CallbackContext):
+async def error(update: Update, context: CallbackContext):
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 
 
-def main():
+async def main():
     updater = Updater(TELEGRAM_BOT_TOKEN)
 
     dp = updater.dispatcher
@@ -411,5 +400,6 @@ def main():
     updater.idle()
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    from aiogram import executor
+    executor.start_polling(dp2, skip_updates=True)
