@@ -15,14 +15,26 @@ import string
 from firebase_admin import credentials, initialize_app, db
 
 import telegram
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup, LabeledPrice, ChatAction
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext, PreCheckoutQueryHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
+from telegram import ReplyKeyboardMarkup
+from telegram import ChatAction
 
-TELEGRAM_BOT_TOKEN = "6224095953:AAFR9gek247GVqFeo4t-LgvwI5KOB8Nr9Ao" #Рабочий
 
-client = poe.Client('Z2nTtrapVPT41-2IdLHnyA%3D%3D')
+payment_links = {
+    "25_requests": "https://poe.com/Sage25",
+    "50_requests": "https://poe.com/Sage50",
+    "200_requests": "https://poe.com/Sage200",
+    "1_week": "https://poe.com/Sage1Week",
+    "1_month": "https://poe.com/Sage1Month",
+    "1_year": "https://poe.com/Sage1Year",
+}
 
-cred = credentials.Certificate("telegabot-16d96-firebase-adminsdk-vsi1b-ae3496034d.json")
+TELEGRAM_BOT_TOKEN = "API" #Тестовый
+
+client = poe.Client('API')
+
+cred = credentials.Certificate("telegabot-16d96-firebase-adminsdk-vsi1b-ae3594244d.json")
 initialize_app(cred, {'databaseURL': 'https://telegabot-16d96-default-rtdb.europe-west1.firebasedatabase.app/'})
 
 
@@ -53,12 +65,6 @@ def set_user_data(user_id, field, value):
     ref = db.reference(f'users/{user_id}/{field}')
     ref.set(value)
 
-def add_gp(user_id, gp_to_add):
-    current_gp = get_user_data(user_id, 'gp')
-    if current_gp is not None:
-        new_gp = current_gp + gp_to_add
-        set_user_data(user_id, 'gp', new_gp)
-
 
 def send_message_and_get_response_to_user_question(update: Update, message):
     #random_name_bot = "02dc6wx6ay83t8s" #generate_random_name()
@@ -73,8 +79,7 @@ def send_message_and_get_response_to_user_question(update: Update, message):
     return response
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -146,7 +151,6 @@ def my_data(update: Update, context: CallbackContext):
     update.message.reply_text(f"Ваш тарифный план: {current_gp}GP")
 
 
-
 def handle_menu(update: Update, context: CallbackContext):
     user_message = update.message.text
 
@@ -182,14 +186,14 @@ def handle_menu(update: Update, context: CallbackContext):
                                                                         "Нажми 'Задать вопрос 🔍' ниже, чтобы начать общение со мной. 👇🏻",
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Задать вопрос 🔍", callback_data="ask_question")]]), parse_mode=telegram.ParseMode.HTML)
     elif user_message == "Premium-подписка":
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="Доступно 10 запросов. Здесь вы можете посмотреть, какое количество запросов и за какую сумму вы можете приобрести!",
+        context.bot.send_message(chat_id=update.effective_chat.id, text="Доступно 10 запросов. Здесь вы можете посмотреть, какое количество запросов и за какую сумму вы можете приобрести!",
                                  reply_markup=InlineKeyboardMarkup([
-                                     [InlineKeyboardButton("120GP - 60 руб.", callback_data="pay_60")],
-                                     [InlineKeyboardButton("200GP - 119р", callback_data="pay_119")],
-                                     [InlineKeyboardButton("1 неделя - 199р", callback_data="pay_199")],
-                                     [InlineKeyboardButton("1 месяц - 549р", callback_data="pay_549")],
-                                     [InlineKeyboardButton("1 год - 1149р", callback_data="pay_1149")],
+                                     [InlineKeyboardButton("25шт - 19р", callback_data="25_requests"),
+                                      InlineKeyboardButton("50шт - 35р", callback_data="50_requests")],
+                                     [InlineKeyboardButton("200шт - 119р", callback_data="200_requests"),
+                                      InlineKeyboardButton("1 неделя - 199р", callback_data="1_week")],
+                                     [InlineKeyboardButton("1 месяц - 549р", callback_data="1_month"),
+                                      InlineKeyboardButton("1 год - 1149р", callback_data="1_year")],
                                  ]))
     elif user_message == "Мои данные":
         my_data(update, context)
@@ -202,52 +206,6 @@ def handle_menu(update: Update, context: CallbackContext):
             context.user_data["ready_to_ask"] = False
 
 
-def handle_callback_query(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-
-    if query.data.startswith("pay_"):
-        amount = query.data.split("_")[1]
-        price = int(amount) * 100
-        prices = [LabeledPrice("Стоимость", price)]
-
-        context.bot.send_invoice(chat_id=query.from_user.id,
-                                 title="Оплата",
-                                 description="Оплата услуги",
-                                 payload="custom_payload",
-                                 provider_token="795840012:LIVE:22800",
-                                 # Замените этот токен на тот, что вы получили от BotFather
-                                 currency="RUB",
-                                 prices=prices,
-                                 start_parameter="payment",
-                                 provider_data='{"shopId": "312766", "shopArticleId": "0"}',
-                                 # Замените значения shopId и shopArticleId на свои
-                                 )
-
-def handle_pre_checkout_query(update: Update, context: CallbackContext):
-    query = update.pre_checkout_query
-    if query.invoice_payload == "custom_payload":
-        context.bot.answer_pre_checkout_query(pre_checkout_query_id=query.id, ok=True)
-    else:
-        context.bot.answer_pre_checkout_query(pre_checkout_query_id=query.id, ok=False, error_message="Что-то пошло не так.")
-
-def calculate_gp(amount):
-    if amount == 6000:
-        return 120
-    elif amount == 11900:
-        return 200
-    # Добавьте другие условия для различных стоимостей, если необходимо
-
-
-def handle_successful_payment(update: Update, context: CallbackContext):
-    successful_payment = update.message.successful_payment
-    user_id = update.message.from_user.id
-    total_amount = successful_payment.total_amount
-    gp_to_add = calculate_gp(total_amount)  # Функция для расчета GP на основе стоимости
-
-    add_gp(user_id, gp_to_add)  # Функция для добавления GP пользователю
-    context.bot.send_message(chat_id=user_id, text=f"Платеж успешно завершен! Вам начислено {gp_to_add} GP.")
-
 
 def handle_inline_keyboard_button_click(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -256,6 +214,9 @@ def handle_inline_keyboard_button_click(update: Update, context: CallbackContext
     if callback_data == "ask_question":
         context.user_data["ready_to_ask"] = True
         query.edit_message_text("Пожалуйста, задай свой вопрос.")
+    elif callback_data in payment_links:
+        payment_link = payment_links[callback_data]
+        query.edit_message_text(f"Для оплаты перейдите по ссылке: {payment_link}")
     else:
         query.answer("Неизвестное действие.")
 
@@ -425,9 +386,6 @@ def main():
     updater = Updater(TELEGRAM_BOT_TOKEN)
 
     dp = updater.dispatcher
-
-    dp.add_handler(CallbackQueryHandler(handle_callback_query))
-
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.regex('^Задать вопрос 🔍$'), handle_menu))
     dp.add_handler(MessageHandler(Filters.regex('^Возможности$'), handle_menu))
@@ -441,9 +399,6 @@ def main():
     dp.add_error_handler(error)
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, ask_question))
 
-    dp.add_handler(PreCheckoutQueryHandler(handle_pre_checkout_query))
-
-    dp.add_handler(MessageHandler(Filters.successful_payment, handle_successful_payment))
 
     # Запустите бота
     updater.start_polling()
